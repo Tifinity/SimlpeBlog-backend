@@ -82,4 +82,18 @@ var routes = Routes{
 		"/openapi101/auth/signup",
 		AuthSignupPost,
 	},
+
+	Route{
+		"CreateComment",
+		strings.ToUpper("Post"),
+		"/openapi101/users/{username}/article/{article_id}/comment",
+		CreateComment,
+	},
+
+	Route{
+		"GetCommentsOfArticle",
+		strings.ToUpper("Get"),
+		"/openapi101/users/{username}/article/{article_id}/comment",
+		GetCommentsOfArticle,
+	},
 }

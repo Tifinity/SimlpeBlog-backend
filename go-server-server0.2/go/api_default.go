@@ -15,8 +15,10 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"strconv"
 	"net/http"
 	"encoding/json"
+	"encoding/binary"
 	"github.com/boltdb/bolt"
 	//"github.com/codegangsta/negroni"
 	"github.com/dgrijalva/jwt-go"
@@ -60,6 +62,12 @@ func ByteSliceEqual(a, b []byte) bool {
     return true
 }
 
+func itob(v int) []byte {
+    b := make([]byte, 8)
+    binary.BigEndian.PutUint64(b, uint64(v))
+    return b
+}
+
 func Authorization(w http.ResponseWriter, r *http.Request) bool {
 	username := strings.Split(r.URL.Path, "/")[3]
 	token, _ := request.ParseFromRequest(r, 
@@ -76,11 +84,7 @@ func Authorization(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func ArticleArticleIdGet(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.WriteHeader(http.StatusOK)
-}
-
-func ArticlePost(w http.ResponseWriter, r *http.Request) {
+	// 验证
 	ok := Authorization(w, r)
 	if !ok {
 		response := ErrorResponse{"Authorization failed!"}
@@ -88,42 +92,100 @@ func ArticlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var article Article
-	err := json.NewDecoder(r.Body).Decode(&article)
+	db, err := bolt.Open("my.db", 0600, nil)
+    if err != nil {
+        log.Fatal(err)
+    }
+	defer db.Close()
+
+	articleId := strings.Split(r.URL.Path, "/")[5]
+	Id, err:= strconv.Atoi(articleId)
 	if err != nil {
-		response := ErrorResponse{err.Error()}
-		JsonResponse(response, w, http.StatusBadRequest)
+		reponse := ErrorResponse{"Wrong ArticleId"}
+		JsonResponse(reponse, w, http.StatusBadRequest)
+		return
+	}
+	var article Article
+	err = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("Article"))
+		if b != nil {
+			v := b.Get(itob(Id))
+			if v == nil {
+				return errors.New("Article Not Exists")
+			} else {
+				_ = json.Unmarshal(v, &article)
+				return nil
+			}
+		} else {
+			return errors.New("Article Not Exists")
+		}
+	})
+
+	if err != nil {
+		reponse := ErrorResponse{err.Error()}
+		JsonResponse(reponse, w, http.StatusNotFound)
+		return
+	}
+	JsonResponse(article, w, http.StatusOK)
+}
+
+func ArticlePost(w http.ResponseWriter, r *http.Request) {
+	// 验证
+	ok := Authorization(w, r)
+	if !ok {
+		response := ErrorResponse{"Authorization failed!"}
+		JsonResponse(response, w, http.StatusUnauthorized)
 		return
 	}
 
+	// 开启数据库
 	db, err := bolt.Open("my.db", 0600, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-
-
-
-/*
-	err = db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte("Comment"))
-		if err != nil {
-			return err
-		}
-		id, _ := b.NextSequence()
-		encoded, err := json.Marshal(comment)
-		return b.Put(itob(int(id)), encoded)
-	})
+	// 解析body得到article
+	var article Article
+	err = json.NewDecoder(r.Body).Decode(&article)
 	if err != nil {
 		response := ErrorResponse{err.Error()}
 		JsonResponse(response, w, http.StatusBadRequest)
 		return
 	}
 
-	JsonResponse(comment, w, http.StatusOK)
-*/
+	if article.Title == "" || article.ArticleContent == "" {
+		response := ErrorResponse{"Wrong title or content"}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
 
+	if err != nil {
+		response := ErrorResponse{err.Error()}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
+
+	err = db.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte("Article"))
+		if err != nil {
+			return err
+		}
+		id, _ := b.NextSequence()
+		article.Id = int(id)
+		fmt.Println("%d",int(id))
+		encoded, err := json.Marshal(article)
+		byte_id := itob(article.Id)
+		return b.Put(byte_id, encoded)
+	})
+
+	if err != nil {
+		response := ErrorResponse{err.Error()}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	w.WriteHeader(http.StatusOK)
 }
 
 func AuthSigninPost(w http.ResponseWriter, r *http.Request) {
@@ -234,4 +296,149 @@ func AuthSignupPost(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusOK)
+}
+
+func CreateComment(w http.ResponseWriter, r *http.Request) {
+	if Authorization(w,r)==false {
+		response := ErrorResponse{"Token Invalid"}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
+	db, err := bolt.Open("my.db", 0600, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	articleId  := strings.Split(r.URL.Path, "/")[5]
+	Id, err:= strconv.Atoi(articleId)
+	if err != nil {
+		response := ErrorResponse{"Wrong ArticleId"}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
+	err = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("Article"))
+		if b != nil {
+			v := b.Get(itob(Id))
+			if v == nil {
+				return errors.New("Article Not Exists")
+			} else {
+				return nil
+			}
+		}
+		return errors.New("Article Not Exists")
+	})
+	
+	if err != nil {
+		response := ErrorResponse{err.Error()}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
+
+	comment := &Comment{
+		Content: "",
+		Author: "",
+		ArticleId: Id,
+	}
+	err = json.NewDecoder(r.Body).Decode(&comment)
+
+	if err != nil  || comment.Content == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		if err != nil {
+			response := ErrorResponse{err.Error()}
+			JsonResponse(response, w, http.StatusBadRequest)
+		} else {
+			response := ErrorResponse{"Empty Content"}
+			JsonResponse(response, w, http.StatusBadRequest)
+		} 
+		return
+	}
+	err = db.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte("Comment"))
+		if err != nil {
+			return err
+		}
+		id, _ := b.NextSequence()
+		encoded, err := json.Marshal(comment)
+		return b.Put(itob(int(id)), encoded)
+	})
+		
+	if err != nil {
+		response := ErrorResponse{err.Error()}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
+	JsonResponse(comment, w, http.StatusOK)
+}
+
+func GetCommentsOfArticle(w http.ResponseWriter, r *http.Request) {
+	if Authorization(w,r)==false {
+		response := ErrorResponse{"Token Invalid"}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
+	db, err := bolt.Open("my.db", 0600, nil)
+    if err != nil {
+        log.Fatal(err)
+    }
+	defer db.Close()
+
+	articleId := strings.Split(r.URL.Path, "/")[5]
+	Id, err:= strconv.Atoi(articleId)
+	if err != nil {
+		reponse := ErrorResponse{"Wrong ArticleId"}
+		JsonResponse(reponse, w, http.StatusBadRequest)
+		return
+	}
+	var article []byte
+	err = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("Article"))
+		if b != nil {
+			v := b.Get(itob(Id))
+			if v == nil {
+				return errors.New("Article Not Exists")
+			} else {
+				article = v
+				return nil
+			}
+		} else {
+			return errors.New("Article Not Exists")
+		}
+	})
+
+	if err != nil {
+		reponse := ErrorResponse{err.Error()}
+		JsonResponse(reponse, w, http.StatusNotFound)
+		return
+	}
+	var comments Comments
+	var comment Comment
+	err = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("Comment"))
+		if b != nil {
+			c := b.Cursor()
+
+			for k, v := c.First(); k != nil; k, v = c.Next() {
+				err = json.Unmarshal(v, &comment)
+				if err != nil {
+					return err
+				}
+				if comment.ArticleId == Id {
+					comments.Content = append(comments.Content, comment)
+				}
+			}
+
+			return nil
+		} else {
+			return errors.New("Comment Not Exists")
+		}
+	})
+
+	if err != nil {
+		reponse := ErrorResponse{err.Error()}
+		JsonResponse(reponse, w, http.StatusNotFound)
+		return
+	}
+
+	JsonResponse(comments, w, http.StatusOK)
 }

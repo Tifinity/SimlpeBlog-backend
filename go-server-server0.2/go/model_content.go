@@ -11,9 +11,12 @@ package swagger
 
 type Article struct {
 
-	Title string `json:"title"`
-	
-	Content string `json:"content"`
+	Id int `json:"id"`
+
+	ArticleContent string `json:"content"`
 
 	Author string `json:"author"`
+
+	Title string `json:"title"`
+
 }
