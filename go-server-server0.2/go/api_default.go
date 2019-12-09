@@ -60,20 +60,17 @@ func ByteSliceEqual(a, b []byte) bool {
     return true
 }
 
-func Authorization(w http.ResponseWriter, r *http.Request) bool {
+func Authorization(w http.ResponseWriter, r *http.Request, username string) bool {
 	token, _ := request.ParseFromRequest(r, 
 		request.AuthorizationHeaderExtractor,
         func(token *jwt.Token) (interface{}, error) {
             return []byte(SecretKey), nil
         })
 	claim, _ := token.Claims.(jwt.MapClaims)
-	fmt.Println(r.Header["Name"][0])
-	fmt.Println(claim["sub"])
-    
-    if r.Header["Name"][0] != claim["sub"] {
+  
+    if username != claim["sub"] {
     	return false
     }
-
 	return true
 }
 
@@ -83,15 +80,15 @@ func ArticleArticleIdGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func ArticlePost(w http.ResponseWriter, r *http.Request) {
-	var user User
-	err = json.NewDecoder(r.Body).Decode(&user)
+	var article Article
+	err := json.NewDecoder(r.Body).Decode(&article)
 	if err != nil {
 		response := ErrorResponse{err.Error()}
 		JsonResponse(response, w, http.StatusBadRequest)
 		return
 	}
 
-	ok := Authorization(w, r)
+	ok := Authorization(w, r, article.Author)
 	if !ok {
 		response := ErrorResponse{"Authorization failed!"}
 		JsonResponse(response, w, http.StatusUnauthorized)
