@@ -227,7 +227,7 @@ func AuthSignupPost(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateComment(w http.ResponseWriter, r *http.Request) {
-	username := strings.Split(r.URL.Path,"/")[2]
+	username := strings.Split(r.URL.Path,"/")[3]
 	if Authorization(w,r,username)==false {
 		response := ErrorResponse{"Token Invalid"}
 		JsonResponse(response, w, http.StatusBadRequest)
@@ -238,7 +238,7 @@ func CreateComment(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 	defer db.Close()
-	articleId  := strings.Split(r.URL.Path, "/")[4]
+	articleId  := strings.Split(r.URL.Path, "/")[5]
 	Id, err:= strconv.Atoi(articleId)
 	if err != nil {
 		response := ErrorResponse{"Wrong ArticleId"}
@@ -298,4 +298,77 @@ func CreateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JsonResponse(comment, w, http.StatusOK)
+}
+
+func GetCommentsOfArticle(w http.ResponseWriter, r *http.Request) {
+	username := strings.Split(r.URL.Path,"/")[3]
+	if Authorization(w,r,username)==false {
+		response := ErrorResponse{"Token Invalid"}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
+	db, err := bolt.Open("my.db", 0600, nil)
+    if err != nil {
+        log.Fatal(err)
+    }
+	defer db.Close()
+
+	articleId := strings.Split(r.URL.Path, "/")[5]
+	Id, err:= strconv.Atoi(articleId)
+	if err != nil {
+		reponse := ErrorResponse{"Wrong ArticleId"}
+		JsonResponse(reponse, w, http.StatusBadRequest)
+		return
+	}
+	var article []byte
+	err = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("Article"))
+		if b != nil {
+			v := b.Get(itob(Id))
+			if v == nil {
+				return errors.New("Article Not Exists")
+			} else {
+				article = v
+				return nil
+			}
+		} else {
+			return errors.New("Article Not Exists")
+		}
+	})
+
+	if err != nil {
+		reponse := ErrorResponse{err.Error()}
+		JsonResponse(reponse, w, http.StatusNotFound)
+		return
+	}
+	var comments Comments
+	var comment Comment
+	err = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("Comment"))
+		if b != nil {
+			c := b.Cursor()
+
+			for k, v := c.First(); k != nil; k, v = c.Next() {
+				err = json.Unmarshal(v, &comment)
+				if err != nil {
+					return err
+				}
+				if comment.ArticleId == Id {
+					comments.Content = append(comments.Content, comment)
+				}
+			}
+
+			return nil
+		} else {
+			return errors.New("Comment Not Exists")
+		}
+	})
+
+	if err != nil {
+		reponse := ErrorResponse{err.Error()}
+		JsonResponse(reponse, w, http.StatusNotFound)
+		return
+	}
+
+	JsonResponse(comments, w, http.StatusOK)
 }
