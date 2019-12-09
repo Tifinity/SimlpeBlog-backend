@@ -225,3 +225,77 @@ func AuthSignupPost(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusOK)
 }
+
+func CreateComment(w http.ResponseWriter, r *http.Request) {
+	username := strings.Split(r.URL.Path,"/")[2]
+	if Authorization(w,r,username)==false {
+		response := ErrorResponse{"Token Invalid"}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
+	db, err := bolt.Open("my.db", 0600, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	articleId  := strings.Split(r.URL.Path, "/")[4]
+	Id, err:= strconv.Atoi(articleId)
+	if err != nil {
+		response := ErrorResponse{"Wrong ArticleId"}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
+	err = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("Article"))
+		if b != nil {
+			v := b.Get(itob(Id))
+			if v == nil {
+				return errors.New("Article Not Exists")
+			} else {
+				return nil
+			}
+		}
+		return errors.New("Article Not Exists")
+	})
+	
+	if err != nil {
+		response := ErrorResponse{err.Error()}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
+
+	comment := &Comment{
+		Content: "",
+		Author: "",
+		ArticleId: Id,
+	}
+	err = json.NewDecoder(r.Body).Decode(&comment)
+
+	if err != nil  || comment.Content == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		if err != nil {
+			response := ErrorResponse{err.Error()}
+			JsonResponse(response, w, http.StatusBadRequest)
+		} else {
+			response := ErrorResponse{"Empty Content"}
+			JsonResponse(response, w, http.StatusBadRequest)
+		} 
+		return
+	}
+	err = db.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte("Comment"))
+		if err != nil {
+			return err
+		}
+		id, _ := b.NextSequence()
+		encoded, err := json.Marshal(comment)
+		return b.Put(itob(int(id)), encoded)
+	})
+		
+	if err != nil {
+		response := ErrorResponse{err.Error()}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
+	JsonResponse(comment, w, http.StatusOK)
+}
