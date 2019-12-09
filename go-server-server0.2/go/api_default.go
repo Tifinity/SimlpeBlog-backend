@@ -10,13 +10,26 @@
 package swagger
 
 import (
+	"fmt"
 	"log"
 	"errors"
+	//"strings"
+	"time"
 	"net/http"
 	"encoding/json"
-
 	"github.com/boltdb/bolt"
+	//"github.com/codegangsta/negroni"
+	"github.com/dgrijalva/jwt-go"
+	"github.com/dgrijalva/jwt-go/request"
 )
+
+const (
+    SecretKey = "gostbops"
+)
+
+type Token struct {
+	Token string `json:"token"`
+}
 
 type ErrorResponse struct {
     Error string `json:"error"`
@@ -32,14 +45,78 @@ func JsonResponse(response interface{}, w http.ResponseWriter, code int) {
     w.Write(json)
 }
 
+func ByteSliceEqual(a, b []byte) bool {
+    if len(a) != len(b) {
+        return false
+    }
+    if (a == nil) != (b == nil) {
+        return false
+    }
+    for i, v := range a {
+        if v != b[i] {
+            return false
+        }
+    }
+    return true
+}
+
+func Authorization(w http.ResponseWriter, r *http.Request) bool {
+	token, _ := request.ParseFromRequest(r, 
+		request.AuthorizationHeaderExtractor,
+        func(token *jwt.Token) (interface{}, error) {
+            return []byte(SecretKey), nil
+        })
+	claim, _ := token.Claims.(jwt.MapClaims)
+	fmt.Println(r.Header["Name"][0])
+	fmt.Println(claim["sub"])
+    
+    if r.Header["Name"][0] != claim["sub"] {
+    	return false
+    }
+
+	return true
+}
+
 func ArticleArticleIdGet(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusOK)
 }
 
 func ArticlePost(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.WriteHeader(http.StatusOK)
+	var user User
+	err = json.NewDecoder(r.Body).Decode(&user)
+	if err != nil {
+		response := ErrorResponse{err.Error()}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
+
+	ok := Authorization(w, r)
+	if !ok {
+		response := ErrorResponse{"Authorization failed!"}
+		JsonResponse(response, w, http.StatusUnauthorized)
+		return
+	}
+
+/*
+	err = db.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte("Comment"))
+		if err != nil {
+			return err
+		}
+		id, _ := b.NextSequence()
+		encoded, err := json.Marshal(comment)
+		return b.Put(itob(int(id)), encoded)
+	})
+	if err != nil {
+		response := ErrorResponse{err.Error()}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
+	}
+
+	JsonResponse(comment, w, http.StatusOK)
+*/
+
 }
 
 func AuthSigninPost(w http.ResponseWriter, r *http.Request) {
@@ -52,11 +129,10 @@ func AuthSigninPost(w http.ResponseWriter, r *http.Request) {
 	var user User
 	err = json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
-			response := ErrorResponse{err.Error()}
-			JsonResponse(response, w, http.StatusBadRequest)
-			return
+		response := ErrorResponse{err.Error()}
+		JsonResponse(response, w, http.StatusBadRequest)
+		return
 	}
-	
 	err = db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("User"))
 		if b != nil {
@@ -70,6 +146,7 @@ func AuthSigninPost(w http.ResponseWriter, r *http.Request) {
 			return errors.New("Wrong Username or Password")
 		}
 	})
+
 	if err != nil {
 		response := ErrorResponse{err.Error()}
 		JsonResponse(response, w, http.StatusNotFound)
@@ -80,21 +157,25 @@ func AuthSigninPost(w http.ResponseWriter, r *http.Request) {
 	claims := make(jwt.MapClaims)
 	claims["exp"] = time.Now().Add(time.Hour * time.Duration(1)).Unix()
 	claims["iat"] = time.Now().Unix()
+	claims["sub"] = user.Username
 	token.Claims = claims
 
 	if err != nil {
-			fatal(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "Error extracting the key")
+		log.Fatal(err)
 	}
 
 	tokenString, err := token.SignedString([]byte(user.Username))
 	if err != nil {
-			fatal(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "Error while signing the token")
+		log.Fatal(err)
 	}
 
 	response := Token{tokenString}
 	JsonResponse(response, w, http.StatusOK)
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.WriteHeader(http.StatusOK)
 }
 
 func AuthSignupPost(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +187,7 @@ func AuthSignupPost(w http.ResponseWriter, r *http.Request) {
 
 	var user User
 	err = json.NewDecoder(r.Body).Decode(&user)
-
+	
 	if err != nil || user.Password == "" || user.Username == "" {
 		response := ErrorResponse{"Wrong Username or Password"}
 		JsonResponse(response, w, http.StatusBadRequest)

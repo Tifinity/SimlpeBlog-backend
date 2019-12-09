@@ -9,9 +9,11 @@
 
 package swagger
 
-type Content struct {
+type Article struct {
 
-	ArticleContent string `json:"article_content"`
+	Title string `json:"title"`
+	
+	Content string `json:"content"`
 
-	Author string `json:"author,omitempty"`
+	Author string `json:"author"`
 }
