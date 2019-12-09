@@ -1,0 +1,97 @@
+---
+swagger: "2.0"
+info:
+  description: "A simple API to learn how to write OpenAPI Specification"
+  version: "1.0.0"
+  title: "Simple API"
+host: "simple.api"
+basePath: "/openapi101"
+schemes:
+- "https"
+paths:
+  /auth/signin:
+    post:
+      summary: "sign in"
+      parameters:
+      - name: "username"
+        in: "path"
+        required: true
+        type: "string"
+        x-exportParamName: "Username"
+      responses:
+        "200":
+          description: "A list of Person"
+          schema:
+            required:
+            - "username"
+            properties:
+              username:
+                type: "string"
+        "404":
+          description: "The user does not exists"
+  /auth/signup:
+    post:
+      summary: "sign up a user"
+      description: "sign up a user"
+      parameters:
+      - in: "body"
+        name: "user"
+        required: false
+        schema:
+          $ref: "#/definitions/user"
+        x-exportParamName: "User"
+      responses:
+        "204":
+          description: "OK"
+        "400":
+          description: "Wrong"
+  /article/{article_id}:
+    get:
+      summary: "get post"
+      parameters:
+      - name: "article_id"
+        in: "path"
+        description: "article id"
+        required: true
+        type: "string"
+        x-exportParamName: "ArticleId"
+      responses:
+        "200":
+          description: "A post"
+          schema:
+            properties:
+              name:
+                type: "string"
+              data:
+                type: "string"
+  /article:
+    post:
+      summary: "Create article"
+      parameters:
+      - in: "body"
+        name: "content"
+        required: true
+        schema:
+          $ref: "#/definitions/content"
+        x-exportParamName: "Content"
+      responses:
+        "204":
+          description: "A post"
+definitions:
+  user:
+    required:
+    - "password"
+    - "username"
+    properties:
+      username:
+        type: "string"
+      password:
+        type: "string"
+  content:
+    required:
+    - "article_content"
+    properties:
+      article_content:
+        type: "string"
+      author:
+        type: "string"
