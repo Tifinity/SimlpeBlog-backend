@@ -58,14 +58,14 @@ var routes = Routes{
 	Route{
 		"ArticleArticleIdGet",
 		strings.ToUpper("Get"),
-		"/openapi101/article/{article_id}",
+		"/openapi101/users/{username}/article/{article_id}",
 		ArticleArticleIdGet,
 	},
 
 	Route{
 		"ArticlePost",
 		strings.ToUpper("Post"),
-		"/openapi101/article",
+		"/openapi101/users/{username}/article",
 		ArticlePost,
 	},
 

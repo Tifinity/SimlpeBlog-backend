@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"log"
 	"errors"
-	//"strings"
+	"strings"
 	"time"
 	"net/http"
 	"encoding/json"
@@ -60,14 +60,15 @@ func ByteSliceEqual(a, b []byte) bool {
     return true
 }
 
-func Authorization(w http.ResponseWriter, r *http.Request, username string) bool {
+func Authorization(w http.ResponseWriter, r *http.Request) bool {
+	username := strings.Split(r.URL.Path, "/")[3]
 	token, _ := request.ParseFromRequest(r, 
 		request.AuthorizationHeaderExtractor,
         func(token *jwt.Token) (interface{}, error) {
             return []byte(SecretKey), nil
         })
 	claim, _ := token.Claims.(jwt.MapClaims)
-  
+	//fmt.Println(username)
     if username != claim["sub"] {
     	return false
     }
@@ -80,6 +81,13 @@ func ArticleArticleIdGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func ArticlePost(w http.ResponseWriter, r *http.Request) {
+	ok := Authorization(w, r)
+	if !ok {
+		response := ErrorResponse{"Authorization failed!"}
+		JsonResponse(response, w, http.StatusUnauthorized)
+		return
+	}
+
 	var article Article
 	err := json.NewDecoder(r.Body).Decode(&article)
 	if err != nil {
@@ -88,12 +96,14 @@ func ArticlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ok := Authorization(w, r, article.Author)
-	if !ok {
-		response := ErrorResponse{"Authorization failed!"}
-		JsonResponse(response, w, http.StatusUnauthorized)
-		return
+	db, err := bolt.Open("my.db", 0600, nil)
+	if err != nil {
+		log.Fatal(err)
 	}
+	defer db.Close()
+
+
+
 
 /*
 	err = db.Update(func(tx *bolt.Tx) error {
